@@ -15,6 +15,7 @@
     'ytd-video-renderer',
     'ytd-compact-video-renderer',
     'ytd-playlist-video-renderer',
+    'yt-lockup-view-model',
   ].join(',');
 
   const KEYWORDS = {
