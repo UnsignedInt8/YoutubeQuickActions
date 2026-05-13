@@ -180,7 +180,7 @@
 
   function findItem(keywords) {
     const candidates = document.querySelectorAll(
-      'ytd-menu-service-item-renderer, ytd-menu-navigation-item-renderer'
+      'yt-list-item-view-model, ytd-menu-service-item-renderer, ytd-menu-navigation-item-renderer'
     );
     for (const el of candidates) {
       const text = el.textContent.trim().toLowerCase();
@@ -222,13 +222,13 @@
       if (!dotBtn) return;
 
       const veil = document.createElement('style');
-      veil.textContent = 'tp-yt-iron-dropdown { visibility: hidden !important; }';
+      veil.textContent = 'tp-yt-iron-dropdown { opacity: 0 !important; pointer-events: none !important; }';
       document.head.appendChild(veil);
 
       dotBtn.click();
       const item = await waitForItem(keywords, 1000);
 
-      if (item) item.click();
+      if (item) (item.querySelector('button') || item).click();
       veil.remove();
     } finally {
       busy = false;
