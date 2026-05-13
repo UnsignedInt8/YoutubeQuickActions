@@ -81,11 +81,15 @@
   function createPortal() {
     const el = document.createElement('div');
     el.id = 'yqa-portal';
+    el._lockedThumb = null;
     el.appendChild(createBtn(ICON_QUEUE, 'Add to queue',
-      () => trigger(currentThumb, KEYWORDS.queue)));
+      () => trigger(el._lockedThumb, KEYWORDS.queue)));
     el.appendChild(createBtn(ICON_NOT_INTERESTED, 'Not interested',
-      () => trigger(currentThumb, KEYWORDS.notInterested)));
-    el.addEventListener('mouseenter', cancelHide);
+      () => trigger(el._lockedThumb, KEYWORDS.notInterested)));
+    el.addEventListener('mouseenter', () => {
+      el._lockedThumb = currentThumb;
+      cancelHide();
+    });
     el.addEventListener('mouseleave', scheduleHide);
     document.body.appendChild(el);
     return el;
@@ -107,6 +111,17 @@
 
   function cancelHide() {
     clearTimeout(hideTimer);
+  }
+
+  // Scroll invalidates the portal↔thumb binding: portal is position:fixed but
+  // the thumb under it scrolls away. Hide and reset so the next hover starts clean.
+  function hideOnScroll() {
+    if (!portal || !portal.classList.contains('yqa-visible')) return;
+    portal.classList.remove('yqa-visible');
+    portal._lockedThumb = null;
+    currentThumb = null;
+    cancelHide();
+    if (leaveWatcher) { leaveWatcher.abort(); leaveWatcher = null; }
   }
 
   // ── Button factory ─────────────────────────────────────────────────────────
@@ -178,11 +193,16 @@
 
   // ── Menu item search ───────────────────────────────────────────────────────
 
+  const ITEM_SELECTOR =
+    'yt-list-item-view-model, ytd-menu-service-item-renderer, ytd-menu-navigation-item-renderer';
+
+  // YouTube reuses menu-item DOM across opens and just updates their content.
+  // The closed dropdown sets display:none on its wrapper, so descendants of
+  // closed (stale) menus have offsetParent === null. Items in the currently
+  // open dropdown have a real offsetParent.
   function findItem(keywords) {
-    const candidates = document.querySelectorAll(
-      'yt-list-item-view-model, ytd-menu-service-item-renderer, ytd-menu-navigation-item-renderer'
-    );
-    for (const el of candidates) {
+    for (const el of document.querySelectorAll(ITEM_SELECTOR)) {
+      if (el.offsetParent === null) continue;
       const text = el.textContent.trim().toLowerCase();
       if (keywords.some(k => text.includes(k))) return el;
     }
@@ -205,7 +225,9 @@
         const it = findItem(keywords);
         if (it) finish(it);
       });
-      obs.observe(document.body, { childList: true, subtree: true });
+      // Watch attributes too: when reused items become visible the change is
+      // a style/aria-hidden toggle on an ancestor, not a childList mutation.
+      obs.observe(document.body, { childList: true, subtree: true, attributes: true });
       setTimeout(() => finish(null), ms);
     });
   }
@@ -263,6 +285,7 @@
     scan();
     [500, 1500, 3000].forEach(t => setTimeout(scan, t));
     startObserver();
+    window.addEventListener('scroll', hideOnScroll, { passive: true, capture: true });
   }
 
   document.addEventListener('yt-navigate-finish', () => {
