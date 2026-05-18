@@ -20,7 +20,7 @@
 
   const KEYWORDS = {
     queue: ['add to queue', 'save to queue', '加入播放队列', '队列'],
-    notInterested: ['not interested', '不感兴趣'],
+    notInterested: ['not interested', 'hide', '不感兴趣', '隐藏'],
   };
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
