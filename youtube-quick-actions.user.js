@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube Quick Actions
 // @namespace    https://tampermonkey.net/
-// @version      1.0.0
-// @description  Hover a thumbnail to reveal "Add to queue" and "Not interested" buttons
+// @version      1.1.0
+// @description  Hover a thumbnail to reveal "Add to queue" and "Not interested" buttons; reverse playlist order on playlist pages
 // @match        https://www.youtube.com/*
 // @grant        none
 // ==/UserScript==
@@ -69,6 +69,7 @@
       }
       .yqa-btn:hover { background: rgba(0,0,0,.85); transform: scale(1.1); }
       .yqa-btn svg { width: 20px; height: 20px; display: block; }
+      #yqa-reverse-btn svg { fill: var(--yt-spec-text-primary, white); }
     `;
     document.head.appendChild(el);
   }
@@ -279,6 +280,90 @@
     }).observe(document.body, { childList: true, subtree: true });
   }
 
+  // ── Playlist reverse ───────────────────────────────────────────────────────
+
+  const PL_PANEL_SEL    = 'ytd-playlist-panel-renderer';
+  const PL_CONTENTS_SEL = 'ytd-playlist-panel-renderer #items';
+  const PL_ITEM_SEL     = 'ytd-playlist-panel-video-renderer';
+
+  let plReversed   = false;
+  let plReverseBtn = null;
+
+  function onWatchWithPlaylist() {
+    return location.pathname === '/watch' && new URLSearchParams(location.search).has('list');
+  }
+
+  function syncPlLinks(container) {
+    const items = Array.from(container.querySelectorAll(`:scope > ${PL_ITEM_SEL}`));
+    items.forEach((item, i) => {
+      const n = i + 1;
+      const idxEl = item.querySelector('span#index');
+      if (idxEl) idxEl.textContent = n;
+      const link = item.querySelector('a#wc-endpoint');
+      if (link) {
+        try {
+          const u = new URL(link.href, location.origin);
+          u.searchParams.set('index', n);
+          link.href = u.pathname + u.search;
+        } catch (_) {}
+      }
+    });
+  }
+
+  function toggleReversePlaylist() {
+    const container = document.querySelector(PL_CONTENTS_SEL);
+    if (!container) return;
+    const items = Array.from(container.querySelectorAll(`:scope > ${PL_ITEM_SEL}`));
+    if (items.length < 2) return;
+    for (let i = items.length - 1; i >= 0; i--) container.appendChild(items[i]);
+    plReversed = !plReversed;
+    syncPlLinks(container);
+    if (plReverseBtn) {
+      const on = plReversed;
+      plReverseBtn.querySelector('svg').style.fill = on ? '#3ea6ff' : '';
+      plReverseBtn.title       = on ? 'Restore original order' : 'Reverse playlist order';
+    }
+  }
+
+  function buildReverseBtn() {
+    const btn = document.createElement('button');
+    btn.id    = 'yqa-reverse-btn';
+    btn.title = 'Reverse playlist order';
+    Object.assign(btn.style, {
+      width: '36px', height: '36px', flexShrink: '0',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      background: 'transparent', border: 'none', borderRadius: '50%',
+      color: 'currentColor', padding: '0', cursor: 'pointer',
+      transition: 'background .15s, color .15s',
+    });
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '24');
+    svg.setAttribute('height', '24');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    // swap_vert: two opposing vertical arrows — represents reversed order
+    path.setAttribute('d', 'M16 17.01V10h-2v7.01h-3L15 21l4-3.99h-3zM9 3L5 6.99h3V14h2V6.99h3L9 3z');
+    svg.appendChild(path);
+    btn.appendChild(svg);
+    btn.addEventListener('click', toggleReversePlaylist);
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(128,128,128,0.2)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
+    return btn;
+  }
+
+  function tryInjectReverseBtn() {
+    if (!onWatchWithPlaylist() || document.getElementById('yqa-reverse-btn')) return;
+    const area = document.querySelector(`${PL_PANEL_SEL} #playlist-action-menu #top-level-buttons-computed`);
+    if (!area) return;
+    plReverseBtn = buildReverseBtn();
+    area.appendChild(plReverseBtn);
+  }
+
+  function resetPlaylistState() {
+    plReversed   = false;
+    plReverseBtn = null;
+  }
+
   // ── Bootstrap ──────────────────────────────────────────────────────────────
 
   function init() {
@@ -287,11 +372,14 @@
     [500, 1500, 3000].forEach(t => setTimeout(scan, t));
     startObserver();
     window.addEventListener('scroll', hideOnScroll, { passive: true, capture: true });
+    [500, 1500, 3000].forEach(t => setTimeout(tryInjectReverseBtn, t));
   }
 
   document.addEventListener('yt-navigate-finish', () => {
+    resetPlaylistState();
     scan();
     [500, 1500].forEach(t => setTimeout(scan, t));
+    [500, 1500, 3000].forEach(t => setTimeout(tryInjectReverseBtn, t));
   });
   document.readyState === 'loading'
     ? document.addEventListener('DOMContentLoaded', init)
